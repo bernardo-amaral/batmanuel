@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -6,14 +6,14 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
-// import { TokenGuard } from '../auth/token.guard';
+import { TokenGuard } from '../auth/token.guard';
 import { AnalyzeRequestDto } from './dto/analyze-request.dto';
 import { AnalyzeService } from './analyze.service';
 
 @ApiTags('analyze')
 @ApiBearerAuth('access-token')
 @Controller()
-// @UseGuards(TokenGuard)
+@UseGuards(TokenGuard)
 export class AnalyzeController {
   constructor(private readonly analyzeService: AnalyzeService) {}
 
