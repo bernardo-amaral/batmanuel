@@ -25,13 +25,12 @@ jobs:
       - name: Send source archive to Batmanuel
         run: |
           HTTP_STATUS=$(curl -sS -X POST "https://batmanuel.onrender.com/analyze/upload" \
-            --connect-timeout 15 \
-            --max-time 300 \
             -H "Authorization: Bearer MOCK-TOKEN-1234567890" \
+            -H "Content-Type: multipart/form-data" \
             -F "projectId=batmanuel" \
             -F "branch=$GITHUB_REF_NAME" \
             -F "commit=$GITHUB_SHA" \
-            -F "file=@source-code.zip" \
+            -F "file=@source-code.zip;type=application/zip" \
             -o response.json \
             -w "%{http_code}")
 
