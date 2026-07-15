@@ -21,6 +21,7 @@ export function printStartupBanner(params: StartupBannerParams): void {
 
 Application : ${params.appName}
 Version     : ${params.version}
+Author      : Bernardo Amaral
 Environment : ${params.environment}
 Port        : ${params.port}
 Swagger     : ${params.swaggerUrl ?? 'disabled'}
