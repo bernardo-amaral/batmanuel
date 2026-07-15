@@ -14,21 +14,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build report payload
+      - name: Create source archive
         run: |
-          echo '{
-            "projectId": "batmanuel",
-            "branch": "'"$GITHUB_REF_NAME"'",
-            "commit": "'"$GITHUB_SHA"'",
-            "sourcePath": "./src"
-          }' > report.json
+          zip -r source-code.zip . \
+            -x ".git/*" \
+            -x "node_modules/*" \
+            -x "dist/*" \
+            -x "coverage/*"
 
-      - name: Send report to Batmanuel
+      - name: Send source archive to Batmanuel
         run: |
-          curl -s -X POST "$QUALITY_API_URL/analyze" \
-            -H "Content-Type: application/json" \
+          curl -s -X POST "$QUALITY_API_URL/analyze/upload" \
             -H "Authorization: Bearer $QUALITY_API_TOKEN" \
-            -d @report.json \
+            -F "projectId=batmanuel" \
+            -F "branch=$GITHUB_REF_NAME" \
+            -F "commit=$GITHUB_SHA" \
+            -F "file=@source-code.zip" \
             -o response.json
 
           cat response.json
@@ -36,7 +37,7 @@ jobs:
           QUALITY_API_URL: ${{ secrets.QUALITY_API_URL }}
           QUALITY_API_TOKEN: ${{ secrets.QUALITY_API_TOKEN }}
 
-      - name: Check quality gate (passed/threshold)
+      - name: Check quality gate
         run: |
           PASSED=$(node -e "console.log(require('./response.json').passed)")
           SCORE=$(node -e "console.log(require('./response.json').score)")
