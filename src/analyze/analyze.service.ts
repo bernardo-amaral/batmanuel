@@ -39,17 +39,17 @@ export class AnalyzeService {
     const duplicationResult =
       await this.duplicationService.analyzeDirectory(sourcePath);
 
-    const duplicationIssues: Issue[] = duplicationResult.duplicates.map(
-      (block) => ({
+    const duplicationIssues: Issue[] = duplicationResult.duplicates
+      .slice(0, 10)
+      .map((block) => ({
         engine: 'duplication-service',
         type: 'quality',
-        severity: block.lines >= 10 ? 'high' : 'medium',
+        severity: block.lines >= 15 ? 'high' : 'medium',
         ruleId: 'duplicate-code',
         message: `Duplicated block found between ${block.firstFile}:${block.firstFileStart} and ${block.secondFile}:${block.secondFileStart}`,
         file: block.secondFile,
         line: block.secondFileStart,
-      }),
-    );
+      }));
 
     const issues: Issue[] = [...duplicationIssues];
 
