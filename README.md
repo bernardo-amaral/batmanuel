@@ -2,6 +2,11 @@
   <img src="./assets/logo.png" alt="Batmanuel logo" width="280" />
 </p>
 
+<p align="center">
+  <img alt="Build Status" src="https://github.com/bernardo-amaral/batmanuel/actions/workflows/code-quality.yml/badge.svg?branch=main" />
+  <img alt="Latest Release" src="https://img.shields.io/github/v/release/bernardo-amaral/batmanuel" />
+</p>
+
 # Batmanuel
 
 **Batmanuel** is a code quality platform built with NestJS. It analyzes repositories to measure code quality, detect duplicated code, and evaluate results through a configurable rules engine that produces a consolidated score and quality gate decision.
