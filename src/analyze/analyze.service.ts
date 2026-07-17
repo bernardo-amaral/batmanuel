@@ -12,13 +12,13 @@ import { AnalyzeRequestDto } from './dto/analyze-request.dto';
 import { AnalysisReport } from './interfaces/analysis-report.interface';
 import { Issue } from './interfaces/issue.interface';
 import { DuplicationService } from '../engines/duplication.service';
-import { RulesService } from 'src/rules/rules.service';
+import { RulesService } from '../rules/rules.service';
 import { AnalyzeUploadRequestDto } from './dto/analyze-upload-request.dto';
 import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import AdmZip from 'adm-zip';
-import { DependencyScannerService } from 'src/engines/dependency-scanner.service';
+import { DependencyScannerService } from '../engines/dependency-scanner.service';
 
 @Injectable()
 export class AnalyzeService {

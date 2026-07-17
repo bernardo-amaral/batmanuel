@@ -19,7 +19,6 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import { TokenGuard } from '../auth/token.guard';
-import { AnalyzeRequestDto } from './dto/analyze-request.dto';
 import { AnalyzeService } from './analyze.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -32,23 +31,10 @@ import { AnalyzeUploadRequestDto } from './dto/analyze-upload-request.dto';
 export class AnalyzeController {
   constructor(private readonly analyzeService: AnalyzeService) {}
 
-  @Post('analyze')
-  @ApiOperation({
-    summary: 'Run a code analysis for a given project/branch/commit (mock)',
-  })
-  @ApiResponse({
-    status: 201,
-    description: 'Analysis report generated successfully',
-  })
-  analyze(@Body() dto: AnalyzeRequestDto) {
-    return this.analyzeService.analyze(dto);
-  }
-
   @Post('analyze/upload')
   @UseGuards(TokenGuard)
   @UseInterceptors(
     FileInterceptor('file', {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       storage: memoryStorage(),
       limits: { fileSize: 25 * 1024 * 1024 },
     }),

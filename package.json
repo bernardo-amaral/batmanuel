@@ -5,6 +5,9 @@
   "author": "Bernardo Amaral",
   "private": false,
   "license": "MIT",
+  "bin": {
+    "batmanuel": "./bin/cli.js"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
