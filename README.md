@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/logo.png" alt="Batmanuel logo" width="280" />
+  <img src="https://raw.githubusercontent.com/bernardo-amaral/batmanuel/refs/heads/main/assets/logo.png" alt="Batmanuel logo" width="280" />
 </p>
 
 <p align="center">
