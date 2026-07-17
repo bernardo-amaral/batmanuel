@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <img alt="Build Status" src="https://github.com/SEU_USER/batmanuel/actions/workflows/code-quality.yml/badge.svg?branch=main" />
-  <img alt="Latest Release" src="https://img.shields.io/github/v/release/SEU_USER/batmanuel" />
+  <img alt="Build Status" src="https://github.com/bernardo-amaral/batmanuel/actions/workflows/code-quality.yml/badge.svg?branch=main" />
+  <img alt="Latest Release" src="https://img.shields.io/github/v/release/bernardo-amaral/batmanuel" />
 </p>
 
 # Batmanuel
