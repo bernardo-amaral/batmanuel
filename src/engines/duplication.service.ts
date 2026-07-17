@@ -1,7 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, Logger } from '@nestjs/common';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -36,7 +32,7 @@ export class DuplicationService {
     const filePaths = this.collectFiles(rootDir, extensions, ignorePatterns);
     const files = filePaths.map((filePath) => this.readAndNormalize(filePath));
 
-    return await this.detectDuplicates(files);
+    return Promise.resolve(this.detectDuplicates(files));
   }
 
   /**
@@ -128,6 +124,7 @@ export class DuplicationService {
       totalLines,
       duplicationPercentage,
       duplicates: consolidatedDuplicates,
+      totalFiles: files?.length || 0,
     };
   }
 

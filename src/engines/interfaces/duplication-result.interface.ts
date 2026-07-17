@@ -16,4 +16,5 @@ export interface DuplicationResult {
   totalLines: number;
   duplicationPercentage: number;
   duplicates: DuplicationBlock[];
+  totalFiles: number;
 }

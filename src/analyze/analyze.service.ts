@@ -1,8 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   BadRequestException,
   Injectable,
@@ -34,8 +30,8 @@ export class AnalyzeService {
    * @returns
    */
   async analyze(dto: AnalyzeRequestDto): Promise<AnalysisReport> {
-    const branch = dto.branch ?? 'main';
-    const commit = dto.commit ?? 'unknown-commit';
+    const branch = dto?.branch || undefined;
+    const commit = dto?.commit || undefined;
     const sourcePath = dto.sourcePath;
 
     return this.runAnalysis({
@@ -94,8 +90,8 @@ export class AnalyzeService {
    */
   private async runAnalysis(params: {
     projectId: string;
-    branch: string;
-    commit: string;
+    branch?: string;
+    commit?: string;
     sourcePath: string;
   }): Promise<AnalysisReport> {
     const duplicationResult = await this.duplicationService.analyzeDirectory(
@@ -126,8 +122,8 @@ export class AnalyzeService {
 
     return {
       projectId: params.projectId,
-      branch: params.branch,
-      commit: params.commit,
+      branch: params?.branch || undefined,
+      commit: params?.commit || undefined,
       timestamp: new Date().toISOString(),
       score: evaluation.score,
       passed: evaluation.passed,
@@ -140,6 +136,7 @@ export class AnalyzeService {
         duplications: duplicationResult.duplicates.length,
         outdatedDeps: dependencyIssues.length,
       },
+      totalFilesAnalyzed: duplicationResult.totalFiles,
       issues,
     };
   }

@@ -3,12 +3,13 @@ import { Issue } from './issue.interface';
 
 export interface AnalysisReport {
   projectId: string;
-  branch: string;
-  commit: string;
+  branch?: string;
+  commit?: string;
   timestamp: string;
   score: number;
   passed: boolean;
   threshold: number;
   metrics: AnalysisMetrics;
   issues: Issue[];
+  totalFilesAnalyzed: number;
 }
