@@ -35,10 +35,8 @@ describe('DependenciesFixService remediation planning', () => {
     expect(manifest.dependencies?.['parent-package']).toBe('3.1.0');
   });
 
-  it('requires review when npm audit reports a major fix', () => {
-    const manifest: PackageJson = {
-      dependencies: { 'parent-package': '3.0.0' },
-    };
+  it('adds a major transitive override when npm audit provides a safe version', () => {
+    const manifest: PackageJson = {};
 
     const plan = service['plan'](manifest, [
       {
@@ -46,16 +44,20 @@ describe('DependenciesFixService remediation planning', () => {
         packageName: 'transitive-package',
         installedVersion: '2.0.0',
         fixedVersion: '4.0.0',
-        remediationPackageName: 'parent-package',
-        remediationInstalledVersion: '3.0.0',
-        remediationIsDirectDependency: true,
+        remediationPackageName: 'transitive-package',
+        remediationInstalledVersion: '2.0.0',
+        remediationIsDirectDependency: false,
         requiresMajorUpdate: true,
         isDirectDependency: false,
         severity: 'high',
       },
     ]);
 
-    expect(plan.manualReviewRequired).toBe(1);
-    expect(manifest.dependencies?.['parent-package']).toBe('3.0.0');
+    expect(plan).toEqual({
+      updatedDependencies: 0,
+      overridesAdded: 1,
+      manualReviewRequired: 0,
+    });
+    expect(manifest.overrides?.['transitive-package']).toBe('4.0.0');
   });
 });

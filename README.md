@@ -39,7 +39,7 @@ The command prints an `AnalysisReport` JSON document containing the score, quali
 batmanuel dependencies-fix . --verbose
 ```
 
-This command supports npm projects with a `package-lock.json`. It uses OSV and `npm audit --json` metadata, applies compatible direct-dependency or parent-dependency updates, and uses npm `overrides` only for compatible transitive fixes. Major-version changes require manual review.
+This command supports npm projects with a `package-lock.json`. It uses OSV and `npm audit --json` metadata, applies compatible direct-dependency or parent-dependency updates, and uses npm `overrides` for transitive fixes. When an npm advisory supplies a safe upper bound, Batmanuel can add the required transitive override even across a major version; direct dependency major-version updates still require manual review.
 
 Before writing changes, Batmanuel backs up `package.json` and `package-lock.json`. It restores both files if `npm install` or vulnerability revalidation fails.
 

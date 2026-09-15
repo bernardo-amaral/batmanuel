@@ -395,6 +395,10 @@ export function parseNpmAuditResult(
 
       if (!dependency) return [];
 
+      const advisories = arrayAt(audit, 'via').filter(
+        (via): via is Record<string, unknown> =>
+          Boolean(via) && typeof via === 'object' && !Array.isArray(via),
+      );
       const fix = objectAt(audit, 'fixAvailable');
       const fixName = stringAt(fix, 'name');
       const remediationDependency = fixName
@@ -402,14 +406,11 @@ export function parseNpmAuditResult(
             (candidate) =>
               candidate.name === fixName && candidate.isDirectDependency,
           ) ?? dependencies.find((candidate) => candidate.name === fixName))
-        : undefined;
+        : dependency;
       const fixedVersion = remediationDependency
-        ? stringAt(fix, 'version')
+        ? (stringAt(fix, 'version') ??
+          fixedVersionFromAdvisoryRanges(advisories))
         : undefined;
-      const advisories = arrayAt(audit, 'via').filter(
-        (via): via is Record<string, unknown> =>
-          Boolean(via) && typeof via === 'object' && !Array.isArray(via),
-      );
       const dependencyPath = arrayAt(audit, 'nodes')
         .filter((node): node is string => typeof node === 'string')
         .map((node) => node.split('/node_modules/').filter(Boolean)[0] ?? node);
@@ -423,7 +424,12 @@ export function parseNpmAuditResult(
         remediationInstalledVersion: remediationDependency?.version,
         remediationIsDirectDependency:
           remediationDependency?.isDirectDependency,
-        requiresMajorUpdate: propertyAt(fix, 'isSemVerMajor') === true,
+        requiresMajorUpdate:
+          propertyAt(fix, 'isSemVerMajor') === true ||
+          requiresMajorVersionChange(
+            remediationDependency?.version,
+            fixedVersion,
+          ),
         dependencyPath,
         isDirectDependency,
         severity: severityFromNpm(
@@ -502,6 +508,48 @@ function advisoryIdentifier(
   return typeof source === 'string' || typeof source === 'number'
     ? String(source)
     : `npm-${packageName}`;
+}
+
+function fixedVersionFromAdvisoryRanges(
+  advisories: Record<string, unknown>[],
+): string | undefined {
+  const candidates = advisories
+    .map((advisory) => safeVersionFromRange(stringAt(advisory, 'range')))
+    .filter((version): version is string => Boolean(version));
+
+  return candidates.sort(compareVersions).at(-1);
+}
+
+function safeVersionFromRange(range: string | undefined): string | undefined {
+  if (!range) return undefined;
+
+  const upperBounds = [...range.matchAll(/(<|<=)\s*v?(\d+\.\d+\.\d+)/g)];
+  const upperBound = upperBounds.at(-1);
+  if (!upperBound) return undefined;
+
+  const [, operator, version] = upperBound;
+  if (operator === '<') return version;
+
+  const [major, minor, patch] = version.split('.').map(Number);
+  if (![major, minor, patch].every(Number.isFinite)) return undefined;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+function requiresMajorVersionChange(
+  installedVersion: string | undefined,
+  fixedVersion: string | undefined,
+): boolean {
+  if (!installedVersion || !fixedVersion) return false;
+  const installedMajor = Number.parseInt(
+    installedVersion.split('.')[0] ?? '',
+    10,
+  );
+  const fixedMajor = Number.parseInt(fixedVersion.split('.')[0] ?? '', 10);
+  return (
+    Number.isFinite(installedMajor) &&
+    Number.isFinite(fixedMajor) &&
+    installedMajor !== fixedMajor
+  );
 }
 
 function compareVersions(left: string, right: string): number {

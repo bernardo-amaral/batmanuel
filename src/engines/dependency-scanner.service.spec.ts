@@ -92,4 +92,39 @@ describe('parseNpmAuditResult', () => {
       }),
     );
   });
+
+  it('derives a transitive override version from the npm advisory range', () => {
+    const findings = parseNpmAuditResult(
+      {
+        vulnerabilities: {
+          'transitive-package': {
+            severity: 'high',
+            isDirect: false,
+            nodes: [
+              'node_modules/parent-package/node_modules/transitive-package',
+            ],
+            via: [
+              {
+                source: 789,
+                title: 'Range-based vulnerability',
+                range: '<=4.1.4',
+              },
+            ],
+            fixAvailable: false,
+          },
+        },
+      },
+      dependencies,
+    );
+
+    expect(findings[0]).toEqual(
+      expect.objectContaining({
+        packageName: 'transitive-package',
+        fixedVersion: '4.1.5',
+        remediationPackageName: 'transitive-package',
+        remediationIsDirectDependency: false,
+        requiresMajorUpdate: true,
+      }),
+    );
+  });
 });

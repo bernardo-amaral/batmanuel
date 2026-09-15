@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -85,8 +86,9 @@ export class DependenciesFixService {
       handled.add(key);
 
       if (
-        finding.requiresMajorUpdate ||
-        !isCompatibleUpdate(installedVersion, finding.fixedVersion)
+        isDirectDependency &&
+        (finding.requiresMajorUpdate ||
+          !isCompatibleUpdate(installedVersion, finding.fixedVersion))
       ) {
         manualReviewRequired++;
         continue;
