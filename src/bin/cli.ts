@@ -14,7 +14,46 @@ import fs from 'node:fs';
 import { printStartupBanner } from '../common/startup-banner';
 import { version } from '../../package.json';
 
-function inferProjectId(targetPath: string): string {
+const supportedCommands = ['analyze', 'dependencies-fix'] as const;
+type SupportedCommand = (typeof supportedCommands)[number];
+
+interface CliOptions {
+  command: string;
+  targetPath: string;
+  verbose: boolean;
+  help: boolean;
+}
+
+function parseOptions(args: string[]): CliOptions {
+  const verbose = args.includes('--verbose') || args.includes('-v');
+  const help = args.includes('--help') || args.includes('-h');
+  const positionalArgs = args.filter(
+    (arg) => !['--verbose', '-v', '--help', '-h'].includes(arg),
+  );
+
+  return {
+    command: positionalArgs[0] ?? 'analyze',
+    targetPath: path.resolve(positionalArgs[1] ?? process.cwd()),
+    verbose,
+    help,
+  };
+}
+
+function isSupportedCommand(command: string): command is SupportedCommand {
+  return supportedCommands.includes(command as SupportedCommand);
+}
+
+function printUsage(): void {
+  console.log(`Accepted commands:
+  batmanuel analyze [path] [--verbose]
+  batmanuel dependencies-fix [path] [--verbose]
+
+Options:
+  --verbose, -v  Show internal execution logs
+  --help, -h     Show this help message`);
+}
+
+function inferProjectId(targetPath: string, verbose: boolean): string {
   const pkgPath = path.join(targetPath, 'package.json');
 
   if (fs.existsSync(pkgPath)) {
@@ -25,6 +64,7 @@ function inferProjectId(targetPath: string): string {
         return pkg.name;
       }
     } catch (err) {
+      if (!verbose) return path.basename(targetPath);
       console.warn(`Could not read package.json at ${pkgPath}:`, err);
     }
   }
@@ -33,11 +73,20 @@ function inferProjectId(targetPath: string): string {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0] ?? 'analyze';
-  const targetPath = path.resolve(args[1] ?? process.cwd());
+  const options = parseOptions(process.argv.slice(2));
+  if (options.help) {
+    printUsage();
+    return;
+  }
 
-  const projectId = inferProjectId(targetPath);
+  if (!isSupportedCommand(options.command)) {
+    console.error(`Unknown command: ${options.command}`);
+    printUsage();
+    process.exitCode = 1;
+    return;
+  }
+
+  const projectId = inferProjectId(options.targetPath, options.verbose);
 
   printStartupBanner({
     appName: 'Batmanuel',
@@ -47,51 +96,55 @@ async function main() {
     swaggerUrl: undefined,
   });
 
-  if (!['analyze', 'dependencies-fix'].includes(command)) {
-    throw new Error(
-      `Unknown command: ${command}. Use analyze or dependencies-fix.`,
-    );
-  }
-
   const app = await NestFactory.createApplicationContext(
-    command === 'dependencies-fix' ? DependenciesFixModule : AnalyzeModule,
+    options.command === 'dependencies-fix'
+      ? DependenciesFixModule
+      : AnalyzeModule,
     {
-      logger: false,
+      logger: options.verbose
+        ? ['log', 'error', 'warn', 'debug', 'verbose']
+        : false,
     },
   );
 
-  if (command === 'dependencies-fix') {
-    const dependenciesFixService = app.get(DependenciesFixService);
-    const result = await dependenciesFixService.fix(targetPath);
-    console.log('Dependency remediation completed\n');
-    console.log(`Fixed vulnerabilities: ${result.fixedVulnerabilities}`);
-    console.log(`Updated dependencies: ${result.updatedDependencies}`);
-    console.log(`Overrides added: ${result.overridesAdded}`);
-    console.log(`Manual review required: ${result.manualReviewRequired}`);
-    console.log(
-      `Remaining vulnerabilities: ${result.remainingVulnerabilities}`,
-    );
-    if (result.changedFiles.length > 0) {
-      console.log('Changed files:');
-      result.changedFiles.forEach((file) => console.log(`- ${file}`));
+  try {
+    if (options.command === 'dependencies-fix') {
+      const dependenciesFixService = app.get(DependenciesFixService);
+      const result = await dependenciesFixService.fix(options.targetPath);
+      console.log('Dependency remediation completed\n');
+      console.log(`Fixed vulnerabilities: ${result.fixedVulnerabilities}`);
+      console.log(`Updated dependencies: ${result.updatedDependencies}`);
+      console.log(`Overrides added: ${result.overridesAdded}`);
+      console.log(`Manual review required: ${result.manualReviewRequired}`);
+      console.log(
+        `Remaining vulnerabilities: ${result.remainingVulnerabilities}`,
+      );
+      if (result.changedFiles.length > 0) {
+        console.log('Changed files:');
+        result.changedFiles.forEach((file) => console.log(`- ${file}`));
+      }
+      return;
     }
+
+    const analyzeService = app.get(AnalyzeService);
+
+    const result = await analyzeService.analyze({
+      sourcePath: options.targetPath,
+      projectId,
+    });
+
+    console.log(JSON.stringify(result, null, 2));
+  } finally {
     await app.close();
-    return;
   }
-
-  const analyzeService = app.get(AnalyzeService);
-
-  const result = await analyzeService.analyze({
-    sourcePath: targetPath || '.',
-    projectId,
-  });
-
-  console.log(JSON.stringify(result, null, 2));
-
-  await app.close();
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+  if (process.argv.includes('--verbose') || process.argv.includes('-v')) {
+    console.error(err);
+  } else {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`Command failed: ${message}`);
+  }
+  process.exitCode = 1;
 });

@@ -201,6 +201,15 @@ batmanuel dependencies-fix ./my-project
 
 The command updates direct dependencies when possible and uses npm `overrides` for safe transitive fixes. It writes `package.json` and `package-lock.json`, preserves existing overrides, skips major-version updates for manual review, and restores both files if installation or revalidation fails.
 
+Add `--verbose` to either CLI command to display internal execution logs:
+
+```bash
+batmanuel dependencies-fix ./my-project --verbose
+batmanuel analyze ./my-project --verbose
+```
+
+Run `batmanuel --help` to list the accepted commands and options.
+
 ## API Routes
 
 ### POST /auth/token
