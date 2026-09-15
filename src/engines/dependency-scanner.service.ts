@@ -2,8 +2,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from '@nestjs/common';
+import { execFile } from 'node:child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { promisify } from 'node:util';
 import {
   PackageDependency,
   VulnerableDependency,
@@ -11,6 +13,7 @@ import {
 import { Issue } from 'src/analyze/interfaces/issue.interface';
 
 const OSV_API = 'https://api.osv.dev/v1/querybatch';
+const execFileAsync = promisify(execFile);
 
 export interface DependencyVulnerabilityFinding {
   id: string;
@@ -66,11 +69,17 @@ export class DependencyScannerService {
     const deps = this.resolveDependencies(projectRoot, pkg);
     if (deps.length === 0) return [];
 
-    const vulnerableDependencies = await this.queryOsvBatch(
-      deps,
-      failOnQueryError,
-    );
-    return vulnerableDependencies.flatMap((dependency) =>
+    let vulnerableDependencies: VulnerableDependency[];
+    try {
+      vulnerableDependencies = await this.queryOsvBatch(deps);
+    } catch (error) {
+      this.logger.warn(
+        `OSV is unavailable; using npm audit fallback: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      return this.analyzeNpmAudit(projectRoot, deps, failOnQueryError);
+    }
+
+    const osvFindings = vulnerableDependencies.flatMap((dependency) =>
       dependency.vulnerabilities.map((vulnerability) => ({
         id: vulnerability.id,
         packageName: dependency.name,
@@ -82,6 +91,10 @@ export class DependencyScannerService {
         summary: vulnerability.summary,
       })),
     );
+    if (osvFindings.length > 0) return osvFindings;
+
+    this.logger.log('OSV returned no findings; using npm audit fallback');
+    return this.analyzeNpmAudit(projectRoot, deps, failOnQueryError);
   }
 
   /**
@@ -153,7 +166,6 @@ export class DependencyScannerService {
    */
   private async queryOsvBatch(
     deps: PackageDependency[],
-    failOnQueryError: boolean,
   ): Promise<VulnerableDependency[]> {
     const queries = deps.map((dep) => ({
       package: {
@@ -163,53 +175,57 @@ export class DependencyScannerService {
       version: dep.version,
     }));
 
-    try {
-      const response = await fetch(OSV_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ queries }),
-      });
+    const response = await fetch(OSV_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ queries }),
+    });
 
-      if (!response.ok) {
-        const error = new Error(
-          `OSV querybatch failed with status ${response.status}`,
-        );
-        if (failOnQueryError) throw error;
-        this.logger.warn(error.message);
-        return [];
+    if (!response.ok) {
+      throw new Error(`OSV querybatch failed with status ${response.status}`);
+    }
+
+    const data: any = await response.json();
+
+    const vulnerable: VulnerableDependency[] = [];
+
+    (data?.results || []).forEach((result: any, index: number) => {
+      const vulns = result.vulns || result.vulnerabilities || [];
+      if (!Array.isArray(vulns) || vulns.length === 0) {
+        return;
       }
 
-      const data: any = await response.json();
+      const dep = deps[index];
 
-      const vulnerable: VulnerableDependency[] = [];
-
-      (data?.results || []).forEach((result: any, index: number) => {
-        const vulns = result.vulns || result.vulnerabilities || [];
-        if (!Array.isArray(vulns) || vulns.length === 0) {
-          return;
-        }
-
-        const dep = deps[index];
-
-        vulnerable.push({
-          name: dep.name,
-          version: dep.version,
-          isDirectDependency: dep.isDirectDependency,
-          dependencyPath: dep.dependencyPath,
-          vulnerabilities: vulns.map((v: any) => ({
-            id: v.id,
-            summary: v.summary,
-            severity: v.severity,
-            fixedVersion: firstFixedVersion(v),
-          })),
-        });
+      vulnerable.push({
+        name: dep.name,
+        version: dep.version,
+        isDirectDependency: dep.isDirectDependency,
+        dependencyPath: dep.dependencyPath,
+        vulnerabilities: vulns.map((v: any) => ({
+          id: v.id,
+          summary: v.summary,
+          severity: v.severity,
+          fixedVersion: firstFixedVersion(v),
+        })),
       });
+    });
 
-      return vulnerable;
+    return vulnerable;
+  }
+
+  private async analyzeNpmAudit(
+    projectRoot: string,
+    dependencies: PackageDependency[],
+    failOnQueryError: boolean,
+  ): Promise<DependencyVulnerabilityFinding[]> {
+    try {
+      const report = await runNpmAudit(projectRoot);
+      return parseNpmAuditResult(report, dependencies);
     } catch (error) {
-      this.logger.error('Error querying OSV API', error as Error);
+      this.logger.error('npm audit fallback failed', error as Error);
       if (failOnQueryError) throw error;
       return [];
     }
@@ -303,10 +319,12 @@ function firstFixedVersion(vulnerability: unknown): string | undefined {
 }
 
 function objectAt(value: unknown, key: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object') return {};
-  const candidate = (value as Record<string, unknown>)[key];
-  return candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-    ? (candidate as Record<string, unknown>)
+  return asObject(propertyAt(value, key));
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -323,6 +341,102 @@ function propertyAt(value: unknown, key: string): unknown {
 function arrayAt(value: unknown, key: string): unknown[] {
   const candidate = propertyAt(value, key);
   return Array.isArray(candidate) ? candidate : [];
+}
+
+function stringAt(value: unknown, key: string): string | undefined {
+  const candidate = propertyAt(value, key);
+  return typeof candidate === 'string' ? candidate : undefined;
+}
+
+async function runNpmAudit(projectRoot: string): Promise<unknown> {
+  let output: string;
+  try {
+    const result = await execFileAsync(
+      'npm',
+      ['audit', '--json', '--package-lock-only'],
+      { cwd: projectRoot },
+    );
+    output = result.stdout;
+  } catch (error) {
+    const auditOutput = stringAt(error, 'stdout');
+    if (!auditOutput) throw error;
+    output = auditOutput;
+  }
+
+  try {
+    return JSON.parse(output) as unknown;
+  } catch {
+    throw new Error('npm audit did not return valid JSON');
+  }
+}
+
+export function parseNpmAuditResult(
+  report: unknown,
+  dependencies: PackageDependency[],
+): DependencyVulnerabilityFinding[] {
+  return Object.entries(objectAt(report, 'vulnerabilities')).flatMap(
+    ([packageName, vulnerability]) => {
+      const audit = asObject(vulnerability);
+      const matchingDependencies = dependencies.filter(
+        (dependency) => dependency.name === packageName,
+      );
+      const isDirectDependency = propertyAt(audit, 'isDirect') === true;
+      const dependency =
+        matchingDependencies.find(
+          (candidate) => candidate.isDirectDependency === isDirectDependency,
+        ) ?? matchingDependencies[0];
+
+      if (!dependency) return [];
+
+      const fix = objectAt(audit, 'fixAvailable');
+      const fixName = stringAt(fix, 'name');
+      const fixedVersion =
+        !fixName || fixName === packageName
+          ? stringAt(fix, 'version')
+          : undefined;
+      const advisories = arrayAt(audit, 'via').filter(
+        (via): via is Record<string, unknown> =>
+          Boolean(via) && typeof via === 'object' && !Array.isArray(via),
+      );
+      const dependencyPath = arrayAt(audit, 'nodes')
+        .filter((node): node is string => typeof node === 'string')
+        .map((node) => node.split('/node_modules/').filter(Boolean)[0] ?? node);
+
+      const toFinding = (advisory: Record<string, unknown>) => ({
+        id: advisoryIdentifier(advisory, packageName),
+        packageName,
+        installedVersion: dependency.version,
+        fixedVersion,
+        dependencyPath,
+        isDirectDependency,
+        severity: severityFromNpm(
+          stringAt(advisory, 'severity') ?? stringAt(audit, 'severity'),
+        ),
+        summary: stringAt(advisory, 'title'),
+      });
+
+      return advisories.length > 0
+        ? advisories.map(toFinding)
+        : [toFinding({})];
+    },
+  );
+}
+
+function severityFromNpm(severity: string | undefined): Issue['severity'] {
+  if (severity === 'critical' || severity === 'high' || severity === 'low') {
+    return severity;
+  }
+  return 'medium';
+}
+
+function advisoryIdentifier(
+  advisory: Record<string, unknown>,
+  packageName: string,
+): string {
+  const source = propertyAt(advisory, 'source');
+  return typeof source === 'string' || typeof source === 'number'
+    ? String(source)
+    : `npm-${packageName}`;
 }
 
 function compareVersions(left: string, right: string): number {
