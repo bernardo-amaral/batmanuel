@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';

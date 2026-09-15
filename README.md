@@ -1,6 +1,16 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bernardo-amaral/batmanuel/refs/heads/main/assets/logo.png" alt="Batmanuel logo" width="280" />
+</p>
+
+<p align="center">
+  <img alt="Build Status" src="https://github.com/bernardo-amaral/batmanuel/actions/workflows/code-quality.yml/badge.svg?branch=main" />
+  <img alt="Latest Release" src="https://img.shields.io/github/v/release/bernardo-amaral/batmanuel" />
+</p>
+
+
 # Batmanuel
 
-Batmanuel is a CLI for analyzing code quality and safely remediating npm dependency vulnerabilities. It analyzes a local project directory and does not expose an HTTP API, server, authentication flow, or Swagger interface.
+Batmanuel is a CLI for analyzing code quality and safely remediating npm dependency vulnerabilities. It analyzes a local project directory.
 
 ## Install
 

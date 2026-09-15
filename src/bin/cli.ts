@@ -123,12 +123,10 @@ async function main() {
 
   const projectId = inferProjectId(options.targetPath, options.verbose);
 
-  if (options.verbose) {
-    printStartupBanner({
-      appName: 'Batmanuel',
-      version,
-    });
-  }
+  printStartupBanner({
+    appName: 'Batmanuel',
+    version,
+  });
 
   const app = await NestFactory.createApplicationContext(
     options.command === 'dependencies-fix'
