@@ -39,10 +39,19 @@ describe('PackageJsonService', () => {
     });
   });
 
-  it('rejects conflicting overrides', () => {
+  it('preserves an existing override when it is already newer', () => {
     const manifest = service.read(projectPath);
-    expect(() =>
-      service.addOverride(manifest.value, 'preserved', '2.0.1'),
-    ).toThrow('conflicts');
+    expect(service.addOverride(manifest.value, 'preserved', '1.9.9')).toBe(
+      false,
+    );
+    expect(manifest.value.overrides?.preserved).toBe('2.0.0');
+  });
+
+  it('upgrades an existing override when the remediation is newer', () => {
+    const manifest = service.read(projectPath);
+    expect(service.addOverride(manifest.value, 'preserved', '2.0.1')).toBe(
+      true,
+    );
+    expect(manifest.value.overrides?.preserved).toBe('2.0.1');
   });
 });

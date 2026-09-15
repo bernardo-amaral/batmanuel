@@ -55,13 +55,29 @@ export class PackageJsonService {
   addOverride(value: PackageJson, name: string, version: string): boolean {
     const overrides = value.overrides ?? {};
     const current = overrides[name];
-    if (current && current !== version) {
-      throw new Error(
-        `Existing override for ${name} conflicts with ${version}`,
-      );
+    if (current) {
+      const comparison = compareVersions(current, version);
+      if (comparison === undefined) {
+        throw new Error(
+          `Existing override for ${name} is not an exact semver version`,
+        );
+      }
+      if (comparison >= 0) return false;
     }
-    if (current === version) return false;
+
     value.overrides = { ...overrides, [name]: version };
     return true;
   }
+}
+
+function compareVersions(left: string, right: string): number | undefined {
+  const leftMatch = left.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  const rightMatch = right.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  if (!leftMatch || !rightMatch) return undefined;
+
+  for (let index = 1; index <= 3; index++) {
+    const difference = Number(leftMatch[index]) - Number(rightMatch[index]);
+    if (difference !== 0) return difference;
+  }
+  return 0;
 }
