@@ -75,20 +75,28 @@ export class DependenciesFixService {
 
     for (const finding of findings) {
       if (!finding.fixedVersion) continue;
-      const key = `${finding.packageName}@${finding.fixedVersion}`;
+      const packageName = finding.remediationPackageName ?? finding.packageName;
+      const installedVersion =
+        finding.remediationInstalledVersion ?? finding.installedVersion;
+      const isDirectDependency =
+        finding.remediationIsDirectDependency ?? finding.isDirectDependency;
+      const key = `${packageName}@${finding.fixedVersion}`;
       if (handled.has(key)) continue;
       handled.add(key);
 
-      if (!isCompatibleUpdate(finding.installedVersion, finding.fixedVersion)) {
+      if (
+        finding.requiresMajorUpdate ||
+        !isCompatibleUpdate(installedVersion, finding.fixedVersion)
+      ) {
         manualReviewRequired++;
         continue;
       }
 
-      if (finding.isDirectDependency) {
+      if (isDirectDependency) {
         if (
           this.packageJsonService.updateDependency(
             pkg,
-            finding.packageName,
+            packageName,
             finding.fixedVersion,
           )
         ) {
@@ -97,7 +105,7 @@ export class DependenciesFixService {
       } else if (
         this.packageJsonService.addOverride(
           pkg,
-          finding.packageName,
+          packageName,
           finding.fixedVersion,
         )
       ) {

@@ -1,21 +1,17 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
-import { AnalyzeRequestDto } from './dto/analyze-request.dto';
+import { Injectable } from '@nestjs/common';
 import { AnalysisReport } from './interfaces/analysis-report.interface';
 import { Issue } from './interfaces/issue.interface';
 import { DuplicationService } from '../engines/duplication.service';
 import { RulesService } from '../rules/rules.service';
-import { AnalyzeUploadRequestDto } from './dto/analyze-upload-request.dto';
-import { mkdtempSync, writeFileSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
-import AdmZip from 'adm-zip';
 import { DependencyScannerService } from '../engines/dependency-scanner.service';
 import { SecurityService } from '../engines/security.service';
+
+export interface AnalyzeOptions {
+  projectId: string;
+  branch?: string;
+  commit?: string;
+  sourcePath?: string;
+}
 
 @Injectable()
 export class AnalyzeService {
@@ -31,58 +27,17 @@ export class AnalyzeService {
    * @param dto
    * @returns
    */
-  async analyze(dto: AnalyzeRequestDto): Promise<AnalysisReport> {
-    const branch = dto?.branch || undefined;
-    const commit = dto?.commit || undefined;
-    const sourcePath = dto?.sourcePath || '.';
+  async analyze(options: AnalyzeOptions): Promise<AnalysisReport> {
+    const branch = options.branch || undefined;
+    const commit = options.commit || undefined;
+    const sourcePath = options.sourcePath || '.';
 
     return this.runAnalysis({
-      projectId: dto.projectId,
+      projectId: options.projectId,
       branch,
       commit,
       sourcePath,
     });
-  }
-
-  /**
-   *
-   * @param dto
-   * @param file
-   * @returns
-   */
-  async analyzeUploadedRepository(
-    dto: AnalyzeUploadRequestDto,
-    file: Express.Multer.File,
-  ): Promise<AnalysisReport> {
-    if (!file.originalname.toLowerCase().endsWith('.zip')) {
-      throw new BadRequestException('Only ZIP files are supported.');
-    }
-
-    const tempRoot = mkdtempSync(path.join(tmpdir(), 'batmanuel-'));
-    const zipPath = path.join(tempRoot, file.originalname);
-    const extractPath = path.join(tempRoot, 'repo');
-
-    try {
-      writeFileSync(zipPath, file.buffer);
-
-      const zip = new AdmZip(zipPath);
-      zip.extractAllTo(extractPath, true);
-
-      const sourcePath = this.resolveSourceDirectory(extractPath);
-
-      return await this.runAnalysis({
-        projectId: dto.projectId,
-        branch: dto.branch,
-        commit: dto.commit,
-        sourcePath,
-      });
-    } catch (error: any) {
-      throw new InternalServerErrorException(
-        'Failed to process uploaded ZIP file.',
-      );
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
   }
 
   /**
@@ -149,29 +104,5 @@ export class AnalyzeService {
       totalFilesAnalyzed: duplicationResult.totalFiles,
       issues,
     };
-  }
-
-  /**
-   *
-   * @param projectId
-   * @returns
-   */
-  getSummary(projectId: string) {
-    return {
-      projectId,
-      lastScore: 0,
-      trend: [],
-      lastAnalysisAt: new Date().toISOString(),
-    };
-  }
-
-  /**
-   *
-   * @param extractPath
-   * @returns
-   */
-  private resolveSourceDirectory(extractPath: string): string {
-    const srcPath = path.join(extractPath, 'src');
-    return srcPath;
   }
 }

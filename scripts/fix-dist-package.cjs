@@ -11,7 +11,7 @@ const readmeDst = path.join(distDir, 'README.md');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
 pkg.bin = {
-    batmanuel: './src/bin/cli.js',
+    batmanuel: 'src/bin/cli.js',
 };
 
 pkg.files = pkg.files || [];

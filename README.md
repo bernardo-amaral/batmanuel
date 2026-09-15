@@ -1,506 +1,65 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/bernardo-amaral/batmanuel/refs/heads/main/assets/logo.png" alt="Batmanuel logo" width="280" />
-</p>
-
-<p align="center">
-  <img alt="Build Status" src="https://github.com/bernardo-amaral/batmanuel/actions/workflows/code-quality.yml/badge.svg?branch=main" />
-  <img alt="Latest Release" src="https://img.shields.io/github/v/release/bernardo-amaral/batmanuel" />
-</p>
-
 # Batmanuel
 
-**Batmanuel** is a code quality platform built with NestJS. It analyzes repositories to measure code quality, detect duplicated code, and evaluate results through a configurable rules engine that produces a consolidated score and quality gate decision.
+Batmanuel is a CLI for analyzing code quality and safely remediating npm dependency vulnerabilities. It analyzes a local project directory and does not expose an HTTP API, server, authentication flow, or Swagger interface.
 
----
+## Install
 
-## Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [CLI Usage](#cli-usage)
-- [API Routes](#api-routes)
-  - [POST /auth/token](#post-authtoken)
-  - [POST /analyze/upload](#post-analyzeupload)
-  - [GET /projects/:id/summary](#get-projectsidsummary)
-- [Rules Engine](#rules-engine)
-- [Authentication](#authentication)
-- [Swagger / API Documentation](#swagger--api-documentation)
-- [GitHub Actions Integration](#github-actions-integration)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-
----
-
-## Architecture Overview
-
-Batmanuel currently acts as an orchestrator for internal analysis engines plus a scoring layer. It scans source code, normalizes findings into a common `AnalysisReport`, evaluates the result through `RulesService`, and returns a quality gate response for a given project, branch, and commit.
-
-```text
-GitHub Actions / Client
-          |
-          v
-   Batmanuel API (NestJS)
-          |
-          +--> Auth module (project token validation)
-          |
-          +--> Analyze module
-          |      |
-          |      +--> DuplicationService
-          |      +--> DependencyScannerService
-          |      +--> SecurityService
-          |      +--> RulesService
-          |
-          v
-   AnalysisReport + score + threshold + passed
+```bash
+npm install --save-dev batmanuel
 ```
 
-At this stage, the API supports uploaded repository archives via POST /analyze/upload, which allows CI pipelines to send a zipped version of the repository instead of relying on a server-side filesystem path. Local analysis of the current project is handled by the Batmanuel CLI, which runs the same analysis pipeline directly on the working directory. The current implementation does not expose a POST /analyze endpoint; the upload route is the main HTTP entry point for analysis.
-
----
-
-## Project Structure
-
-```text
-src/
-├── app.module.ts
-├── main.ts
-├── auth/
-│   ├── auth.controller.ts
-│   ├── auth.module.ts
-│   └── token.guard.ts
-├── analyze/
-│   ├── analyze.controller.ts
-│   ├── analyze.module.ts
-│   ├── analyze.service.ts
-│   ├── dto/
-│   │   ├── analyze-request.dto.ts
-│   │   └── analyze-upload-request.dto.ts
-│   └── interfaces/
-│       ├── analysis-metrics.interface.ts
-│       ├── analysis-report.interface.ts
-│       └── issue.interface.ts
-├── engines/
-│   ├── dependency-scanner.service.ts
-│   ├── duplication.service.ts
-│   ├── security.service.ts
-│   └── interfaces/
-│       ├── dependency-result.interface.ts
-│       └── duplication-result.interface.ts
-└── rules/
-    ├── config/
-    │   └── default-rules.config.ts
-    ├── interfaces/
-    │   └── rules-config.interface.ts
-    ├── rules.constants.ts
-    ├── rules.module.ts
-    └── rules.service.ts
-```
-
-### Module responsibilities
-
-- `auth/`: generates and validates Bearer tokens for protected endpoints.
-- `analyze/`: receives analysis requests, orchestrates engines, and returns normalized reports.
-- `engines/`: contains concrete analyzers such as `DuplicationService` and `DependencyScannerService`.
-- `rules/`: contains the scoring and threshold logic, exposed through `RulesService` and configured through the exported `RULES_CONFIG` provider token.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- npm
-
-### Installation
+For development in this repository:
 
 ```bash
 npm install
+npm run build
 ```
 
-### Running locally
+## Commands
 
 ```bash
-npm run start:dev
+batmanuel analyze [path] [--verbose]
+batmanuel dependencies-fix [path] [--verbose]
+batmanuel --help
 ```
 
-The API will be available at `http://localhost:3000`.
+`path` defaults to the current directory. `--verbose` (or `-v`) displays internal execution logs.
 
-### Testing `POST /analyze/upload`
+### Analyze a project
 
 ```bash
-curl -X POST http://localhost:3000/analyze/upload \
-  -H "Authorization: Bearer <YOUR_TOKEN>" \
-  -F "projectId=my-project-backend" \
-  -F "branch=main" \
-  -F "commit=abc123" \
-  -F "file=@source-code.zip"
+batmanuel analyze .
 ```
 
----
+The command prints an `AnalysisReport` JSON document containing the score, quality-gate result, metrics, and issues found by the duplication, security, and dependency scanners.
 
-## CLI Usage
-
-Batmanuel can also be used as a local CLI tool to analyze the current project without exposing an HTTP endpoint.
-
-### Running the CLI in a project
-
-Inside the Batmanuel repository, you can run:
+### Remediate npm vulnerabilities
 
 ```bash
-npx ts-node src/bin/cli.ts analyze .
+batmanuel dependencies-fix . --verbose
 ```
 
-This command:
+This command supports npm projects with a `package-lock.json`. It uses OSV and `npm audit --json` metadata, applies compatible direct-dependency or parent-dependency updates, and uses npm `overrides` only for compatible transitive fixes. Major-version changes require manual review.
 
-- creates a NestJS application context for `AnalyzeModule`;
-- runs the same analysis pipeline used by `POST /analyze/upload`;
-- prints the JSON `AnalysisReport` (score, threshold, passed, metrics, issues) to stdout.
+Before writing changes, Batmanuel backs up `package.json` and `package-lock.json`. It restores both files if `npm install` or vulnerability revalidation fails.
 
-By default, the CLI uses:
+## CI usage
 
-- `sourcePath`: the current working directory (or the path you pass as the first argument);
-- `projectId`: the basename of the target directory (e.g. `batmanuel` for `/Users/you/projects/batmanuel`).
-
-### Integrating Batmanuel as a dependency
-
-To use Batmanuel as a CLI in another project:
-
-1. Install Batmanuel as a dependency (once it is published to npm):
-
-   ```bash
-   npm install batmanuel --save-dev
-   ```
-
-2. Add an npm script to your project:
-
-   ```json
-   {
-     "scripts": {
-       "batmanuel:analyze": "batmanuel analyze ."
-     }
-   }
-   ```
-
-3. Run the analysis from the project root:
-
-   ```bash
-   npm run batmanuel:analyze
-   ```
-
-This makes it easy to integrate Batmanuel into local workflows and CI pipelines without running a separate API server.
-
-### Repairing dependency vulnerabilities
-
-For npm projects with a `package-lock.json`, Batmanuel can apply safe patch and minor-version remediation:
-
-```bash
-batmanuel dependencies-fix ./my-project
-```
-
-The command updates direct dependencies when possible and uses npm `overrides` for safe transitive fixes. It writes `package.json` and `package-lock.json`, preserves existing overrides, skips major-version updates for manual review, and restores both files if installation or revalidation fails.
-
-Add `--verbose` to either CLI command to display internal execution logs:
-
-```bash
-batmanuel dependencies-fix ./my-project --verbose
-batmanuel analyze ./my-project --verbose
-```
-
-Run `batmanuel --help` to list the accepted commands and options.
-
-## API Routes
-
-### POST /auth/token
-
-Generates an access token for a given project. This token must be used to authenticate all subsequent requests to protected routes.
-
-**Request body:**
-
-```json
-{
-  "projectId": "my-project-backend"
-}
-```
-
-**Response:**
-
-```json
-{
-  "projectId": "my-project-backend",
-  "token": "MOCK-TOKEN-1234567890",
-  "expiresIn": "30d"
-}
-```
-
----
-
-### POST /analyze/upload
-
-Uploads a zipped repository with `multipart/form-data`, extracts it in a temporary directory, resolves the source directory, and runs the analysis pipeline. This endpoint is designed for CI environments where the API cannot access the repository path directly on the runner.
-
-**Form fields:**
-
-- `projectId`: unique project identifier
-- `branch`: analyzed branch
-- `commit`: analyzed commit SHA
-- `file`: zipped repository archive
-
-**Example request:**
-
-```bash
-curl -X POST http://localhost:3000/analyze/upload \
-  -H "Authorization: Bearer <YOUR_TOKEN>" \
-  -F "projectId=my-project-backend" \
-  -F "branch=main" \
-  -F "commit=abc123" \
-  -F "file=@source-code.zip"
-```
-
-**Example response:**
-
-```json
-{
-  "projectId": "my-project-backend",
-  "branch": "main",
-  "commit": "abc123",
-  "timestamp": "2026-07-15T15:00:00.000Z",
-  "score": 100,
-  "passed": true,
-  "threshold": 70,
-  "metrics": {
-    "securityCritical": 0,
-    "securityHigh": 0,
-    "securityMedium": 0,
-    "qualitySmells": 0,
-    "duplications": 0,
-    "outdatedDeps": 0
-  },
-  "totalFilesAnalyzed": 42,
-  "issues": []
-}
-```
-
-| Field                      | Type    | Description                                       |
-| -------------------------- | ------- | ------------------------------------------------- |
-| `score`                    | number  | Overall quality score from 0 to 100.              |
-| `passed`                   | boolean | Whether the score meets the configured threshold. |
-| `threshold`                | number  | Minimum required score to pass the quality gate.  |
-| `metrics.securityCritical` | number  | Number of critical security issues.               |
-| `metrics.securityHigh`     | number  | Number of high severity security issues.          |
-| `metrics.securityMedium`   | number  | Number of medium severity security issues.        |
-| `metrics.qualitySmells`    | number  | Number of quality smell issues.                   |
-| `metrics.duplications`     | number  | Number of duplicated code blocks found.           |
-| `metrics.outdatedDeps`     | number  | Number of outdated or vulnerable dependencies.    |
-| `issues[].type`            | string  | `security`, `quality`, or `dependency`.           |
-| `issues[].severity`        | string  | `critical`, `high`, `medium`, `low`, or `info`.   |
-
----
-
-### GET /projects/:id/summary
-
-Returns a basic project summary payload. The current implementation uses a placeholder response and does not yet persist historical analysis data.
-
-**Response:**
-
-```json
-{
-  "projectId": "my-project-backend",
-  "lastScore": 0,
-  "trend": [],
-  "lastAnalysisAt": "2026-07-15T15:00:00.000Z"
-}
-```
-
----
-
-## Rules Engine
-
-Batmanuel now includes a dedicated `rules/` module responsible for turning raw findings into a final score and quality gate decision.
-
-### Components
-
-- `rules.constants.ts`: declares the injection token, currently `RULES_CONFIG`.
-- `interfaces/rules-config.interface.ts`: defines the shape of the rules configuration.
-- `config/default-rules.config.ts`: holds the default scoring and threshold values.
-- `rules.service.ts`: evaluates findings and returns score, threshold, pass/fail, and breakdown data.
-- `rules.module.ts`: registers and exports both `RulesService` and `RULES_CONFIG`.
-
-### Flow
-
-1. An analysis engine generates findings, such as duplicated blocks.
-2. `AnalyzeService` converts those findings into normalized `Issue[]`.
-3. `RulesService.evaluate(...)` applies penalties and thresholds from the injected config.
-4. The final API response includes:
-   - `score`
-   - `passed`
-   - `threshold`
-   - metrics and issues
-
-### Example conceptual config
-
-```ts
-export const DEFAULT_RULES_CONFIG = {
-  threshold: 70,
-  penalties: {
-    critical: 40,
-    high: 20,
-    medium: 5,
-    low: 1,
-  },
-};
-```
-
-This structure makes it straightforward to tune the quality gate without changing analysis controllers or engines.
-
----
-
-## Authentication
-
-All routes except `POST /auth/token` require a Bearer token in the `Authorization` header:
-
-```text
-Authorization: Bearer <YOUR_TOKEN>
-```
-
-The `TokenGuard` in `src/auth/token.guard.ts` validates the token before allowing access to protected endpoints.
-
----
-
-## Swagger / API Documentation
-
-Interactive API documentation is powered by `@nestjs/swagger`.
-
-### Accessing the docs
-
-```text
-http://localhost:3000/docs
-```
-
-If your application uses a global prefix such as `api`, the docs path will follow that prefix accordingly.
-
-### Authenticating in Swagger UI
-
-1. Open `/docs`.
-2. Click **Authorize**.
-3. Paste your Bearer token.
-4. Test protected routes directly from the UI.
-
-### Upload endpoint in Swagger
-
-The upload route is documented as `multipart/form-data` and exposes the binary `file` field plus additional form fields.
-
----
-
-## GitHub Actions Integration
-
-A workflow is provided at `.github/workflows/code-quality.yml`. It now packages the checked-out repository as a `.zip`, uploads it to `POST /analyze/upload`, parses the JSON response with `jq`, and fails the pipeline if the quality gate is not met.
-
-### Required repository secrets
-
-| Secret              | Description                                |
-| ------------------- | ------------------------------------------ |
-| `QUALITY_API_URL`   | Public URL of the Batmanuel API            |
-| `QUALITY_API_TOKEN` | Bearer token used to authenticate requests |
-
-### Example workflow
+Run Batmanuel directly in the checked-out repository:
 
 ```yaml
-name: Code Quality Check
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  batmanuel:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Create source archive
-        run: |
-          zip -r source-code.zip . \
-            -x ".git/*" \
-            -x "node_modules/*" \
-            -x "dist/*" \
-            -x "coverage/*"
-
-      - name: Send source archive to Batmanuel
-        run: |
-          HTTP_STATUS=$(curl -sS -X POST "$QUALITY_API_URL/analyze/upload" \
-            --connect-timeout 15 \
-            --max-time 300 \
-            -H "Authorization: Bearer $QUALITY_API_TOKEN" \
-            -F "projectId=batmanuel" \
-            -F "branch=$GITHUB_REF_NAME" \
-            -F "commit=$GITHUB_SHA" \
-            -F "file=@source-code.zip" \
-            -o response.json \
-            -w "%{http_code}")
-
-          echo "HTTP status: $HTTP_STATUS"
-          echo "Response body:"
-          cat response.json
-
-          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "201" ]; then
-            echo "Batmanuel API returned unexpected HTTP status: $HTTP_STATUS"
-            exit 1
-          fi
-        env:
-          QUALITY_API_URL: ${{ secrets.QUALITY_API_URL }}
-          QUALITY_API_TOKEN: ${{ secrets.QUALITY_API_TOKEN }}
-
-      - name: Validate response schema
-        run: |
-          if ! jq -e '.passed != null and .score != null and .threshold != null' response.json > /dev/null; then
-            echo "Response JSON does not contain passed/score/threshold."
-            echo "Actual response:"
-            cat response.json
-            exit 1
-          fi
-
-      - name: Check quality gate
-        run: |
-          PASSED=$(jq -r '.passed' response.json)
-          SCORE=$(jq -r '.score' response.json)
-          THRESHOLD=$(jq -r '.threshold' response.json)
-
-          echo "Score: $SCORE (threshold: $THRESHOLD)"
-
-          if [ "$PASSED" != "true" ]; then
-            echo "Quality gate failed: score $SCORE is below threshold $THRESHOLD."
-            exit 1
-          fi
-
-          echo "Quality gate passed."
+- uses: actions/checkout@v4
+- uses: actions/setup-node@v4
+  with:
+    node-version: 22
+- run: npm ci
+- run: npx batmanuel analyze . > batmanuel-report.json
+- run: jq -e '.passed == true' batmanuel-report.json
 ```
 
-### Integration flow
+## Development
 
-1. Check out the repository.
-2. Compress the source code into `source-code.zip`.
-3. Upload the archive to `POST /analyze/upload`.
-4. Read `passed`, `score`, and `threshold` from `response.json`.
-5. Fail the workflow if the repository does not satisfy the configured quality gate.
-
----
-
-## Roadmap
-
-- Persistence of historical reports in PostgreSQL.
-- Expanded analysis engines for security and dependency scanning.
-- Angular dashboard for score trends and issue exploration.
-- Standalone CLI for local project analysis and API submission.
-- Additional CI integrations beyond GitHub Actions.
-
----
-
-## Contributing
-
-This project is under active development. Contributions, suggestions, and issue reports are welcome via pull requests and GitHub issues.
+```bash
+npm run build
+npm test -- --runInBand --watchman=false
+```

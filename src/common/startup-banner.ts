@@ -1,16 +1,9 @@
-import { Logger } from '@nestjs/common';
-
 interface StartupBannerParams {
   appName: string;
   version: string;
-  environment: string;
-  port: number | string;
-  swaggerUrl?: string;
 }
 
 export function printStartupBanner(params: StartupBannerParams): void {
-  const logger = new Logger('Startup');
-
   const banner = `
 ██████╗  █████╗ ████████╗███╗   ███╗ █████╗ ███╗   ██╗██╗   ██╗███████╗██╗
 ██╔══██╗██╔══██╗╚══██╔══╝████╗ ████║██╔══██╗████╗  ██║██║   ██║██╔════╝██║
@@ -22,10 +15,8 @@ export function printStartupBanner(params: StartupBannerParams): void {
 Application : ${params.appName}
 Version     : ${params.version}
 Author      : Bernardo Amaral
-Environment : ${params.environment}
-Port        : ${params.port}
-Swagger     : ${params.swaggerUrl ?? 'disabled'}
+Mode        : CLI
 `;
 
-  logger.log(banner);
+  console.error(banner);
 }

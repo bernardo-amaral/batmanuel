@@ -14,62 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create source archive
-        run: |
-          zip -r source-code.zip . \
-            -x ".git/*" \
-            -x "node_modules/*" \
-            -x "dist/*" \
-            -x "coverage/*"
-
-      - name: Send source archive to Batmanuel
-        run: |
-          HTTP_STATUS=$(curl -sS -X POST "$QUALITY_API_URL/analyze/upload" \
-            -H "Authorization: Bearer $QUALITY_API_TOKEN" \
-            -H "Content-Type: multipart/form-data" \
-            -F "projectId=batmanuel" \
-            -F "branch=$GITHUB_REF_NAME" \
-            -F "commit=$GITHUB_SHA" \
-            -F "file=@source-code.zip;type=application/zip" \
-            -o response.json \
-            -w "%{http_code}")
-
-          echo "HTTP status: $HTTP_STATUS"
-          echo "Response body:"
-          cat response.json
-
-          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "201" ]; then
-            echo "Batmanuel API returned unexpected HTTP status: $HTTP_STATUS"
-            exit 1
-          fi
-        env:
-          QUALITY_API_URL: ${{ secrets.QUALITY_API_URL }}
-          QUALITY_API_TOKEN: ${{ secrets.QUALITY_API_TOKEN }}
-
-      - name: Validate response schema
-        run: |
-          if ! jq -e '.passed != null and .score != null and .threshold != null' response.json > /dev/null; then
-            echo "Response JSON does not contain passed/score/threshold."
-            echo "Actual response:"
-            cat response.json
-            exit 1
-          fi
-
-      - name: Check quality gate
-        run: |
-          PASSED=$(jq -r '.passed' response.json)
-          SCORE=$(jq -r '.score' response.json)
-          THRESHOLD=$(jq -r '.threshold' response.json)
-
-          echo "Score: $SCORE (threshold: $THRESHOLD)"
-
-          if [ "$PASSED" != "true" ]; then
-            echo "Quality gate failed: score $SCORE is below threshold $THRESHOLD."
-            exit 1
-          fi
-
-          echo "Quality gate passed."
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -77,12 +21,20 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: npm i
+        run: npm ci
 
-      - name: Build 🔧
+      - name: Analyze repository
+        run: npx ts-node src/bin/cli.ts analyze . > batmanuel-report.json
+
+      - name: Check quality gate
+        run: |
+          jq -e '.passed == true' batmanuel-report.json > /dev/null
+          echo "Batmanuel quality gate passed."
+
+      - name: Build package
         run: npm run build && node scripts/fix-dist-package.cjs
 
-      - name: Publish package on NPM 📦
+      - name: Publish package on NPM
         working-directory: dist/
         run: npm publish
         env:

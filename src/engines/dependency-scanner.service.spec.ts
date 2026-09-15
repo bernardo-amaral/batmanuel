@@ -10,6 +10,12 @@ describe('parseNpmAuditResult', () => {
       isDirectDependency: true,
     },
     {
+      name: 'parent-package',
+      version: '3.0.0',
+      dev: false,
+      isDirectDependency: true,
+    },
+    {
       name: 'transitive-package',
       version: '2.0.0',
       dev: false,
@@ -52,7 +58,7 @@ describe('parseNpmAuditResult', () => {
     ]);
   });
 
-  it('reports vulnerabilities but does not misapply a parent-package fix', () => {
+  it('maps a safe parent-package fix for a transitive vulnerability', () => {
     const findings = parseNpmAuditResult(
       {
         vulnerabilities: {
@@ -77,7 +83,10 @@ describe('parseNpmAuditResult', () => {
     expect(findings[0]).toEqual(
       expect.objectContaining({
         packageName: 'transitive-package',
-        fixedVersion: undefined,
+        fixedVersion: '3.1.0',
+        remediationPackageName: 'parent-package',
+        remediationInstalledVersion: '3.0.0',
+        remediationIsDirectDependency: true,
         isDirectDependency: false,
         severity: 'medium',
       }),

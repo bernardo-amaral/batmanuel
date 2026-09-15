@@ -5,6 +5,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 
 import { NestFactory } from '@nestjs/core';
+import { LoggerService } from '@nestjs/common';
 import { AnalyzeModule } from '../analyze/analyze.module';
 import { AnalyzeService } from '../analyze/analyze.service';
 import { DependenciesFixModule } from '../dependencies-fix/dependencies-fix.module';
@@ -22,6 +23,40 @@ interface CliOptions {
   targetPath: string;
   verbose: boolean;
   help: boolean;
+}
+
+class StderrLogger implements LoggerService {
+  log(message: unknown, ...optionalParams: unknown[]): void {
+    this.write('LOG', message, optionalParams);
+  }
+
+  error(message: unknown, ...optionalParams: unknown[]): void {
+    this.write('ERROR', message, optionalParams);
+  }
+
+  warn(message: unknown, ...optionalParams: unknown[]): void {
+    this.write('WARN', message, optionalParams);
+  }
+
+  debug(message: unknown, ...optionalParams: unknown[]): void {
+    this.write('DEBUG', message, optionalParams);
+  }
+
+  verbose(message: unknown, ...optionalParams: unknown[]): void {
+    this.write('VERBOSE', message, optionalParams);
+  }
+
+  fatal(message: unknown, ...optionalParams: unknown[]): void {
+    this.write('FATAL', message, optionalParams);
+  }
+
+  private write(
+    level: string,
+    message: unknown,
+    optionalParams: unknown[],
+  ): void {
+    console.error(`[${level}]`, message, ...optionalParams);
+  }
 }
 
 function parseOptions(args: string[]): CliOptions {
@@ -88,22 +123,19 @@ async function main() {
 
   const projectId = inferProjectId(options.targetPath, options.verbose);
 
-  printStartupBanner({
-    appName: 'Batmanuel',
-    version,
-    environment: 'cli',
-    port: 0,
-    swaggerUrl: undefined,
-  });
+  if (options.verbose) {
+    printStartupBanner({
+      appName: 'Batmanuel',
+      version,
+    });
+  }
 
   const app = await NestFactory.createApplicationContext(
     options.command === 'dependencies-fix'
       ? DependenciesFixModule
       : AnalyzeModule,
     {
-      logger: options.verbose
-        ? ['log', 'error', 'warn', 'debug', 'verbose']
-        : false,
+      logger: options.verbose ? new StderrLogger() : false,
     },
   );
 

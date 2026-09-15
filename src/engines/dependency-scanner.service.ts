@@ -20,6 +20,10 @@ export interface DependencyVulnerabilityFinding {
   packageName: string;
   installedVersion: string;
   fixedVersion?: string;
+  remediationPackageName?: string;
+  remediationInstalledVersion?: string;
+  remediationIsDirectDependency?: boolean;
+  requiresMajorUpdate?: boolean;
   dependencyPath?: string[];
   isDirectDependency: boolean;
   severity: Issue['severity'];
@@ -91,7 +95,10 @@ export class DependencyScannerService {
         summary: vulnerability.summary,
       })),
     );
-    if (osvFindings.length > 0) return osvFindings;
+    if (osvFindings.length > 0) {
+      const npmFindings = await this.analyzeNpmAudit(projectRoot, deps, false);
+      return mergeVulnerabilityFindings(osvFindings, npmFindings);
+    }
 
     this.logger.log('OSV returned no findings; using npm audit fallback');
     return this.analyzeNpmAudit(projectRoot, deps, failOnQueryError);
@@ -390,10 +397,15 @@ export function parseNpmAuditResult(
 
       const fix = objectAt(audit, 'fixAvailable');
       const fixName = stringAt(fix, 'name');
-      const fixedVersion =
-        !fixName || fixName === packageName
-          ? stringAt(fix, 'version')
-          : undefined;
+      const remediationDependency = fixName
+        ? (dependencies.find(
+            (candidate) =>
+              candidate.name === fixName && candidate.isDirectDependency,
+          ) ?? dependencies.find((candidate) => candidate.name === fixName))
+        : undefined;
+      const fixedVersion = remediationDependency
+        ? stringAt(fix, 'version')
+        : undefined;
       const advisories = arrayAt(audit, 'via').filter(
         (via): via is Record<string, unknown> =>
           Boolean(via) && typeof via === 'object' && !Array.isArray(via),
@@ -407,6 +419,11 @@ export function parseNpmAuditResult(
         packageName,
         installedVersion: dependency.version,
         fixedVersion,
+        remediationPackageName: remediationDependency?.name,
+        remediationInstalledVersion: remediationDependency?.version,
+        remediationIsDirectDependency:
+          remediationDependency?.isDirectDependency,
+        requiresMajorUpdate: propertyAt(fix, 'isSemVerMajor') === true,
         dependencyPath,
         isDirectDependency,
         severity: severityFromNpm(
@@ -420,6 +437,54 @@ export function parseNpmAuditResult(
         : [toFinding({})];
     },
   );
+}
+
+function mergeVulnerabilityFindings(
+  osvFindings: DependencyVulnerabilityFinding[],
+  npmFindings: DependencyVulnerabilityFinding[],
+): DependencyVulnerabilityFinding[] {
+  const npmFindingsByPackage = new Map<
+    string,
+    DependencyVulnerabilityFinding
+  >();
+  for (const finding of npmFindings) {
+    if (finding.fixedVersion) {
+      npmFindingsByPackage.set(
+        `${finding.packageName}@${finding.installedVersion}`,
+        finding,
+      );
+    }
+  }
+
+  const osvPackages = new Set(
+    osvFindings.map(
+      (finding) => `${finding.packageName}@${finding.installedVersion}`,
+    ),
+  );
+  const enrichedOsvFindings = osvFindings.map((finding) => {
+    const npmFinding = npmFindingsByPackage.get(
+      `${finding.packageName}@${finding.installedVersion}`,
+    );
+    return npmFinding
+      ? {
+          ...finding,
+          fixedVersion: finding.fixedVersion ?? npmFinding.fixedVersion,
+          remediationPackageName: npmFinding.remediationPackageName,
+          remediationInstalledVersion: npmFinding.remediationInstalledVersion,
+          remediationIsDirectDependency:
+            npmFinding.remediationIsDirectDependency,
+          requiresMajorUpdate: npmFinding.requiresMajorUpdate,
+        }
+      : finding;
+  });
+
+  return [
+    ...enrichedOsvFindings,
+    ...npmFindings.filter(
+      (finding) =>
+        !osvPackages.has(`${finding.packageName}@${finding.installedVersion}`),
+    ),
+  ];
 }
 
 function severityFromNpm(severity: string | undefined): Issue['severity'] {
