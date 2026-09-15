@@ -7,6 +7,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AnalyzeModule } from '../analyze/analyze.module';
 import { AnalyzeService } from '../analyze/analyze.service';
+import { DependenciesFixModule } from '../dependencies-fix/dependencies-fix.module';
+import { DependenciesFixService } from '../dependencies-fix/dependencies-fix.service';
 import path from 'node:path';
 import fs from 'node:fs';
 import { printStartupBanner } from '../common/startup-banner';
@@ -32,7 +34,8 @@ function inferProjectId(targetPath: string): string {
 
 async function main() {
   const args = process.argv.slice(2);
-  const targetPath = args[1] ?? process.cwd();
+  const command = args[0] ?? 'analyze';
+  const targetPath = path.resolve(args[1] ?? process.cwd());
 
   const projectId = inferProjectId(targetPath);
 
@@ -44,9 +47,37 @@ async function main() {
     swaggerUrl: undefined,
   });
 
-  const app = await NestFactory.createApplicationContext(AnalyzeModule, {
-    logger: false,
-  });
+  if (!['analyze', 'dependencies-fix'].includes(command)) {
+    throw new Error(
+      `Unknown command: ${command}. Use analyze or dependencies-fix.`,
+    );
+  }
+
+  const app = await NestFactory.createApplicationContext(
+    command === 'dependencies-fix' ? DependenciesFixModule : AnalyzeModule,
+    {
+      logger: false,
+    },
+  );
+
+  if (command === 'dependencies-fix') {
+    const dependenciesFixService = app.get(DependenciesFixService);
+    const result = await dependenciesFixService.fix(targetPath);
+    console.log('Dependency remediation completed\n');
+    console.log(`Fixed vulnerabilities: ${result.fixedVulnerabilities}`);
+    console.log(`Updated dependencies: ${result.updatedDependencies}`);
+    console.log(`Overrides added: ${result.overridesAdded}`);
+    console.log(`Manual review required: ${result.manualReviewRequired}`);
+    console.log(
+      `Remaining vulnerabilities: ${result.remainingVulnerabilities}`,
+    );
+    if (result.changedFiles.length > 0) {
+      console.log('Changed files:');
+      result.changedFiles.forEach((file) => console.log(`- ${file}`));
+    }
+    await app.close();
+    return;
+  }
 
   const analyzeService = app.get(AnalyzeService);
 

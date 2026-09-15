@@ -191,6 +191,16 @@ To use Batmanuel as a CLI in another project:
 
 This makes it easy to integrate Batmanuel into local workflows and CI pipelines without running a separate API server.
 
+### Repairing dependency vulnerabilities
+
+For npm projects with a `package-lock.json`, Batmanuel can apply safe patch and minor-version remediation:
+
+```bash
+batmanuel dependencies-fix ./my-project
+```
+
+The command updates direct dependencies when possible and uses npm `overrides` for safe transitive fixes. It writes `package.json` and `package-lock.json`, preserves existing overrides, skips major-version updates for manual review, and restores both files if installation or revalidation fails.
+
 ## API Routes
 
 ### POST /auth/token
