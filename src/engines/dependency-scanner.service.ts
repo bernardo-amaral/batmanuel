@@ -24,6 +24,7 @@ export interface DependencyVulnerabilityFinding {
   remediationInstalledVersion?: string;
   remediationIsDirectDependency?: boolean;
   requiresMajorUpdate?: boolean;
+  requiresRegistryValidation?: boolean;
   dependencyPath?: string[];
   isDirectDependency: boolean;
   severity: Issue['severity'];
@@ -407,9 +408,10 @@ export function parseNpmAuditResult(
               candidate.name === fixName && candidate.isDirectDependency,
           ) ?? dependencies.find((candidate) => candidate.name === fixName))
         : dependency;
+      const fixedVersionFromAudit = stringAt(fix, 'version');
+      const fixedVersionFromRange = fixedVersionFromAdvisoryRanges(advisories);
       const fixedVersion = remediationDependency
-        ? (stringAt(fix, 'version') ??
-          fixedVersionFromAdvisoryRanges(advisories))
+        ? (fixedVersionFromAudit ?? fixedVersionFromRange)
         : undefined;
       const dependencyPath = arrayAt(audit, 'nodes')
         .filter((node): node is string => typeof node === 'string')
@@ -430,6 +432,8 @@ export function parseNpmAuditResult(
             remediationDependency?.version,
             fixedVersion,
           ),
+        requiresRegistryValidation:
+          !fixedVersionFromAudit && Boolean(fixedVersionFromRange),
         dependencyPath,
         isDirectDependency,
         severity: severityFromNpm(
@@ -480,6 +484,7 @@ function mergeVulnerabilityFindings(
           remediationIsDirectDependency:
             npmFinding.remediationIsDirectDependency,
           requiresMajorUpdate: npmFinding.requiresMajorUpdate,
+          requiresRegistryValidation: npmFinding.requiresRegistryValidation,
         }
       : finding;
   });

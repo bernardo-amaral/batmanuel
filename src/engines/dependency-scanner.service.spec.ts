@@ -124,6 +124,7 @@ describe('parseNpmAuditResult', () => {
         remediationPackageName: 'transitive-package',
         remediationIsDirectDependency: false,
         requiresMajorUpdate: true,
+        requiresRegistryValidation: true,
       }),
     );
   });

@@ -32,7 +32,12 @@ export class DependenciesFixService {
       projectPath,
       true,
     );
-    const plan = this.plan(manifest.value, findings);
+    const validation = await this.excludeUnavailableRemediations(
+      projectPath,
+      findings,
+    );
+    const plan = this.plan(manifest.value, validation.findings);
+    plan.manualReviewRequired += validation.manualReviewRequired;
     const changedFiles: string[] = [];
 
     if (plan.updatedDependencies === 0 && plan.overridesAdded === 0) {
@@ -119,6 +124,60 @@ export class DependenciesFixService {
       }
     }
     return { updatedDependencies, overridesAdded, manualReviewRequired };
+  }
+
+  private async excludeUnavailableRemediations(
+    projectPath: string,
+    findings: DependencyVulnerabilityFinding[],
+  ): Promise<{
+    findings: DependencyVulnerabilityFinding[];
+    manualReviewRequired: number;
+  }> {
+    const unavailable = new Set<string>();
+
+    for (const finding of findings) {
+      if (!finding.fixedVersion || !finding.requiresRegistryValidation) {
+        continue;
+      }
+
+      const packageName = finding.remediationPackageName ?? finding.packageName;
+      const isDirectDependency =
+        finding.remediationIsDirectDependency ?? finding.isDirectDependency;
+      const requiresMajorUpdate =
+        finding.requiresMajorUpdate ||
+        !isCompatibleUpdate(
+          finding.remediationInstalledVersion ?? finding.installedVersion,
+          finding.fixedVersion,
+        );
+      if (isDirectDependency && requiresMajorUpdate) continue;
+
+      const key = `${packageName}@${finding.fixedVersion}`;
+      if (unavailable.has(key)) continue;
+
+      try {
+        await execFileAsync(
+          'npm',
+          [
+            'view',
+            `${packageName}@${finding.fixedVersion}`,
+            'version',
+            '--json',
+          ],
+          { cwd: projectPath, timeout: 10_000 },
+        );
+      } catch {
+        unavailable.add(key);
+      }
+    }
+
+    return {
+      findings: findings.filter((finding) => {
+        const packageName =
+          finding.remediationPackageName ?? finding.packageName;
+        return !unavailable.has(`${packageName}@${finding.fixedVersion}`);
+      }),
+      manualReviewRequired: unavailable.size,
+    };
   }
 
   private result(

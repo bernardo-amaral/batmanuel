@@ -170,11 +170,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  if (process.argv.includes('--verbose') || process.argv.includes('-v')) {
-    console.error(err);
-  } else {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`Command failed: ${message}`);
-  }
+  const message = err instanceof Error ? err.message : 'Unknown error';
+  console.error(`Command failed: ${message}`);
   process.exitCode = 1;
 });
