@@ -44,7 +44,12 @@ export class DependenciesFixService {
       changedFiles.push('package.json');
       await execFileAsync(
         'npm',
-        ['install', '--package-lock-only', '--ignore-scripts'],
+        [
+          'install',
+          '--package-lock-only',
+          '--ignore-scripts',
+          '--legacy-peer-deps',
+        ],
         {
           cwd: projectPath,
         },
